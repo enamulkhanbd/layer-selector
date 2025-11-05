@@ -324,22 +324,46 @@
       }
     }
 
-    /* ✅ NEW: When a nested layer is checked, check all of its parent layer items in the UI */
-    function selectParentLayers(childCheckbox) {
-      // climb DOM: .layer-item-header -> .layer-item -> (parent) .layers-list -> .layer-item ...
-      let parentLayer = childCheckbox.closest('.layers-list')?.closest('.layer-item');
-      while (parentLayer) {
-        const parentCheckbox = parentLayer.querySelector(':scope > .layer-item-header .layer-checkbox');
-        if (parentCheckbox && !parentCheckbox.checked) {
-          parentCheckbox.checked = true;
-          // trigger change so counts/indeterminate states update correctly
-          parentCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        parentLayer = parentLayer.closest('.layers-list')?.closest('.layer-item');
-      }
+    /* ✅ NEW: Tree selection helpers (parent ⇄ children with indeterminate) */
+function getLayerItemFromCheckbox(cb) {
+  return cb.closest('.layer-item');
+}
+function setDescendantsChecked(layerItem, checked) {
+  if (!layerItem) return;
+  const descendants = layerItem.querySelectorAll('.layers-list .layer-checkbox');
+  descendants.forEach(dcb => {
+    dcb.checked = checked;
+    dcb.indeterminate = false;
+  });
+}
+function updateAncestors(layerItem) {
+  let parentLayer = layerItem.closest('.layers-list')?.closest('.layer-item');
+  while (parentLayer) {
+    const parentCheckbox = parentLayer.querySelector(':scope > .layer-item-header .layer-checkbox');
+    const directChildren = parentLayer.querySelectorAll(':scope > .layers-list > .layer-item > .layer-item-header .layer-checkbox');
+    let total = 0, checked = 0, anyIndeterminate = false;
+    directChildren.forEach(cb => {
+      total++;
+      if (cb.indeterminate) anyIndeterminate = true;
+      if (cb.checked) checked++;
+    });
+    if (total === 0) {
+      parentCheckbox.indeterminate = false;
+    } else if (checked === 0 && !anyIndeterminate) {
+      parentCheckbox.checked = false;
+      parentCheckbox.indeterminate = false;
+    } else if (checked === total && !anyIndeterminate) {
+      parentCheckbox.checked = true;
+      parentCheckbox.indeterminate = false;
+    } else {
+      parentCheckbox.checked = false;
+      parentCheckbox.indeterminate = true; // partially selected
     }
+    parentLayer = parentLayer.closest('.layers-list')?.closest('.layer-item');
+  }
+}
 
-    function buildTree(layers) {
+function buildTree(layers) {
       const map = new Map();
       const tree = [];
 
@@ -498,15 +522,14 @@
         const optionGroup = event.target.closest('.option-group');
         if (optionGroup) {
           const layerCheckboxes = optionGroup.querySelectorAll('.layer-checkbox');
-          layerCheckboxes.forEach(cb => cb.checked = isChecked);
+          layerCheckboxes.forEach(cb => { cb.checked = isChecked; cb.indeterminate = false; });
         }
       }
       
       if (event.target.classList.contains('layer-checkbox')) {
-        if (event.target.checked) {
-          // ✅ ensure parents in the tree become checked visually
-          selectParentLayers(event.target);
-        }
+        const layerItem = getLayerItemFromCheckbox(event.target);
+        setDescendantsChecked(layerItem, event.target.checked);
+        updateAncestors(layerItem);
         updateParentCheckboxState(event.target);
       }
 
