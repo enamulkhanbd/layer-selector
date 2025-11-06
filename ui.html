@@ -459,52 +459,72 @@
       const tree = []; // This will be the root
 
       // Pass 1: Create all nodes, including "dummy" parent nodes.
-      // E.g., for "Group/Icon", it creates "Group" then "Group/Icon".
+      // The map's key is the structural path (e.g., "0/1/"), which is unique.
       for (const layer of layers) {
-        let currentPath = '';
-        const parts = layer.name.split('/');
+        let currentPathName = ''; // The 'icon/chevron' name path
+        let currentStructPath = ''; // The '0/1/' structural path
         
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i];
-          currentPath = (i === 0) ? part : `${currentPath}/${part}`;
+        const nameParts = layer.name.split('/');
+        // 'path' is '0/0/0/'. Split and remove empty last entry.
+        const pathParts = layer.path.split('/').filter(p => p.length > 0); 
+        
+        if (nameParts.length !== pathParts.length) {
+          console.error('Mismatch between name and path parts', layer);
+          continue; // Skip this malformed layer
+        }
+        
+        for (let i = 0; i < nameParts.length; i++) {
+          const part = nameParts[i];
+          currentPathName = (i === 0) ? part : `${currentPathName}/${part}`;
           
-          if (!map.has(currentPath)) {
+          // Construct the structural path part-by-part
+          currentStructPath += pathParts[i] + '/'; // e.g., '0/' then '0/0/'
+          
+          const key = currentStructPath; // Our new UNIQUE key
+
+          if (!map.has(key)) {
             // Create a dummy node if it doesn't exist
-            map.set(currentPath, { 
-              name: currentPath, 
-              nodeIds: [], // Dummy parents have no IDs by default
+            map.set(key, { 
+              name: currentPathName, // Still use NAME path for hierarchy/display
+              path: key,         // Store the struct path
+              nodeIds: [], 
               children: [] 
             });
           }
           
-          if (i === parts.length - 1) {
+          if (i === nameParts.length - 1) {
             // This is the actual layer from the data.
             // Merge it with the (possibly dummy) node we just created.
-            const existingNode = map.get(currentPath);
-            map.set(currentPath, {
+            const existingNode = map.get(key);
+            map.set(key, {
               ...existingNode, // Keep 'children' array
               ...layer,         // Overwrite with real data (name, path, nodeIds)
+              name: currentPathName // Ensure we keep the full name path
             });
           }
         }
       }
 
       // Pass 2: Link nodes to parents.
-      for (const [name, node] of map.entries()) {
-        const parts = name.split('/');
+      // We iterate the map which is now keyed by structural path.
+      for (const [key, node] of map.entries()) { // key is now '0/0/'
+        
+        const parts = key.split('/').filter(p => p.length > 0); // e.g., ['0', '0']
+        
         if (parts.length > 1) {
-          parts.pop();
-          const parentName = parts.join('/');
-          const parent = map.get(parentName); 
-          // Parent is guaranteed to exist because of Pass 1
+          parts.pop(); // e.g., ['0']
+          const parentKey = parts.join('/') + '/'; // e.g., '0/'
+          const parent = map.get(parentKey); 
+          
           if (parent) {
+            // Add this node to its parent's children
             parent.children.push(node);
           } else {
-             // Should be unreachable, but as a fallback:
+             // Should be unreachable if path is correct, but fallback:
              tree.push(node);
           }
         } else {
-          // Root node
+          // This is a root node (e.g., '0/' or '1/')
           tree.push(node);
         }
       }
