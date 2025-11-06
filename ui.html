@@ -14,17 +14,27 @@
       height: 100vh;
       display: flex;
       flex-direction: column;
-      overflow: hidden; /* Hide main scrollbar */
+      overflow: hidden;
     }
 
     #container {
-      padding-bottom: 60px; /* Space for the footer */
+      padding-bottom: 60px;
       flex-grow: 1;
-      overflow-y: auto;
+      overflow-y: hidden;
     }
+    
     .info-text {
-      color: #777;
-      padding: 8px 16px; /* Adjusted padding */
+      color: #2d2d2d;
+      padding: 16px; 
+      height: 100%;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      font-size: 14px;
+      line-height: 22px;
     }
 
     /* --- ACCORDION STYLES --- */
@@ -94,7 +104,7 @@
       position: absolute;
       background: #e0e0e0;
       width: 1px;
-      left: -12px; /* Positions line in the margin */
+      left: -12px;
       transform: translateX(-0.5px);
       top: -17px;
       height: calc(100% + 17px);
@@ -102,16 +112,14 @@
     
     /* Stop line for the last option */
     .property-content > .option-group:last-child::before {
-      height: 32px; /* (17px + 15px) */
+      height: 32px;
     }
 
-
-    /* .option-title (Box Header) */
     .option-title {
       font-weight: 600;
       padding: 8px 12px; 
       background: #f5f5ff;
-      border-bottom: 1px solid #e0e0e0; /* Separator */
+      border-bottom: 1px solid #e0e0e0;
       display: flex;
       align-items: center;
       cursor: pointer;
@@ -205,6 +213,16 @@
     .layer-item input {
       margin-right: 8px;
     }
+    
+    /* Style for disabled parent checkboxes */
+    .layer-item input:disabled + label {
+      color: #999;
+      cursor: default;
+    }
+    .layer-item input:disabled {
+      cursor: default;
+    }
+
     .layer-item label {
       white-space: nowrap;
       overflow: hidden;
@@ -259,6 +277,22 @@
       background-color: #e0e0e0;
     }
     
+    /* Tooltip CSS */
+    #custom-tooltip {
+      display: none;
+      position: fixed;
+      background: #333;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      pointer-events: none;
+      z-index: 1000;
+      max-width: 300px;
+      white-space: normal;
+      word-wrap: break-word;
+      transform: translateX(-100%); 
+    }
   </style>
 </head>
 <body>
@@ -275,7 +309,12 @@
   <script>
     const container = document.getElementById('container');
     
-    /* --- MODIFIED: updateGlobalCount logic --- */
+    const tooltip = document.createElement('div');
+    tooltip.id = 'custom-tooltip';
+    document.body.appendChild(tooltip);
+    let tooltipTimeout = null;
+    let currentLabel = null; 
+
     function updateGlobalCount() {
       const count = document.querySelectorAll('.layer-checkbox:checked').length;
       const countEl = document.getElementById('selection-count');
@@ -285,13 +324,13 @@
       
       if (count === 0) {
         countEl.textContent = 'No layer selected';
-        button.textContent = 'Select Layers'; // Button text when 0
+        button.textContent = 'Select Layers';
       } else if (count === 1) {
         countEl.textContent = '1 layer selected';
-        button.textContent = 'Select Layer'; // Button text when 1 (singular)
+        button.textContent = 'Select Layer';
       } else {
         countEl.textContent = `${count} layers selected`;
-        button.textContent = 'Select Layers'; // Button text when 2+ (plural)
+        button.textContent = 'Select Layers';
       }
       
       button.disabled = (count === 0);
@@ -302,20 +341,23 @@
       if (!optionGroup) return;
 
       const parentCheckbox = optionGroup.querySelector('.option-checkbox-all');
-      const allLayerCheckboxes = optionGroup.querySelectorAll('.layer-checkbox');
+      const allLayerCheckboxes = optionGroup.querySelectorAll('.layer-checkbox:not(:disabled)');
       
       if (!parentCheckbox || allLayerCheckboxes.length === 0) return;
 
       const total = allLayerCheckboxes.length;
       let checkedCount = 0;
+      let indeterminateCount = 0;
+      
       allLayerCheckboxes.forEach(cb => {
         if (cb.checked) checkedCount++;
+        if (cb.indeterminate) indeterminateCount++;
       });
 
-      if (checkedCount === 0) {
+      if (checkedCount === 0 && indeterminateCount === 0) {
         parentCheckbox.indeterminate = false;
         parentCheckbox.checked = false;
-      } else if (checkedCount === total) {
+      } else if (checkedCount === total && indeterminateCount === 0) {
         parentCheckbox.indeterminate = false;
         parentCheckbox.checked = true;
       } else {
@@ -324,85 +366,118 @@
       }
     }
 
-    /* ✅ NEW: Tree selection helpers (parent ⇄ children with indeterminate) */
-function getLayerItemFromCheckbox(cb) {
-  return cb.closest('.layer-item');
-}
-function setDescendantsChecked(layerItem, checked) {
-  if (!layerItem) return;
-  const descendants = layerItem.querySelectorAll('.layers-list .layer-checkbox');
-  descendants.forEach(dcb => {
-    dcb.checked = checked;
-    dcb.indeterminate = false;
-  });
-}
-function updateAncestors(layerItem) {
-  let parentLayer = layerItem.closest('.layers-list')?.closest('.layer-item');
-  while (parentLayer) {
-    const parentCheckbox = parentLayer.querySelector(':scope > .layer-item-header .layer-checkbox');
-    const directChildren = parentLayer.querySelectorAll(':scope > .layers-list > .layer-item > .layer-item-header .layer-checkbox');
-    let total = 0, checked = 0, anyIndeterminate = false;
-    directChildren.forEach(cb => {
-      total++;
-      if (cb.indeterminate) anyIndeterminate = true;
-      if (cb.checked) checked++;
-    });
-    if (total === 0) {
-      parentCheckbox.indeterminate = false;
-    } else if (checked === 0 && !anyIndeterminate) {
-      parentCheckbox.checked = false;
-      parentCheckbox.indeterminate = false;
-    } else if (checked === total && !anyIndeterminate) {
-      parentCheckbox.checked = true;
-      parentCheckbox.indeterminate = false;
-    } else {
-      parentCheckbox.checked = false;
-      parentCheckbox.indeterminate = true; // partially selected
+    function getLayerItemFromCheckbox(cb) {
+      return cb.closest('.layer-item');
     }
-    parentLayer = parentLayer.closest('.layers-list')?.closest('.layer-item');
-  }
-}
+    
+    function setDescendantsChecked(layerItem, checked) {
+      if (!layerItem) return;
+      const descendants = layerItem.querySelectorAll('.layers-list .layer-checkbox:not(:disabled)');
+      descendants.forEach(dcb => {
+        dcb.checked = checked;
+        dcb.indeterminate = false; 
+      });
+    }
+    
+    function updateAncestors(layerItem) {
+      let parentLayer = layerItem.closest('.layers-list')?.closest('.layer-item');
+      while (parentLayer) {
+        const parentCheckbox = parentLayer.querySelector(':scope > .layer-item-header .layer-checkbox');
+        if (!parentCheckbox) {
+            parentLayer = parentLayer.closest('.layers-list')?.closest('.layer-item');
+            continue;
+        }
+        
+        const directChildren = parentLayer.querySelectorAll(':scope > .layers-list > .layer-item > .layer-item-header .layer-checkbox:not(:disabled)');
+        let total = 0, checked = 0, anyIndeterminate = false;
+        
+        directChildren.forEach(cb => {
+          total++;
+          if (cb.indeterminate) anyIndeterminate = true;
+          if (cb.checked) checked++;
+        });
+        
+        if (total === 0) {
+          parentCheckbox.checked = false;
+          parentCheckbox.indeterminate = false;
+        } 
+        else if (checked === 0 && !anyIndeterminate) {
+          parentCheckbox.checked = false;
+          parentCheckbox.indeterminate = false;
+        } 
+        else if (checked > 0 && (checked < total || anyIndeterminate)) {
+          parentCheckbox.checked = false;
+          parentCheckbox.indeterminate = true;
+        }
+        else if (checked === total && !anyIndeterminate) {
+          parentCheckbox.checked = true;
+          parentCheckbox.indeterminate = false;
+        }
+        
+        parentLayer = parentLayer.closest('.layers-list')?.closest('.layer-item');
+      }
+    }
 
-function buildTree(layers) {
+    function buildTree(layers) {
       const map = new Map();
-      const tree = [];
+      const tree = []; 
 
       for (const layer of layers) {
-        map.set(layer.path, { ...layer, children: [] });
+        let currentPath = '';
+        const parts = layer.name.split('/');
+        
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          currentPath = (i === 0) ? part : `${currentPath}/${part}`;
+          
+          if (!map.has(currentPath)) {
+            map.set(currentPath, { 
+              name: currentPath, 
+              nodeIds: [], 
+              children: [] 
+            });
+          }
+          
+          if (i === parts.length - 1) {
+            const existingNode = map.get(currentPath);
+            map.set(currentPath, {
+              ...existingNode, 
+              ...layer,         
+            });
+          }
+        }
       }
 
-      for (const [path, node] of map.entries()) {
-        const parts = path.split('/').filter(p => p !== '');
-        
+      for (const [name, node] of map.entries()) {
+        const parts = name.split('/');
         if (parts.length > 1) {
           parts.pop();
-          const parentPath = parts.join('/') + '/';
-          const parent = map.get(parentPath);
-          
+          const parentName = parts.join('/');
+          const parent = map.get(parentName); 
           if (parent) {
             parent.children.push(node);
           } else {
-            tree.push(node);
+             tree.push(node);
           }
         } else {
           tree.push(node);
         }
       }
 
-      for (const node of map.values()) {
-        node.children.sort((a, b) => {
+      function sortChildren(nodeList) {
+        nodeList.sort((a, b) => {
           const nameA = a.name.split('/').pop();
           const nameB = b.name.split('/').pop();
           return nameA.localeCompare(nameB);
         });
+        for (const node of nodeList) {
+          if (node.children.length > 0) {
+            sortChildren(node.children);
+          }
+        }
       }
       
-      tree.sort((a, b) => {
-        const nameA = a.name.split('/').pop();
-        const nameB = b.name.split('/').pop();
-        return nameA.localeCompare(nameB);
-      });
-
+      sortChildren(tree);
       return tree;
     }
     
@@ -412,19 +487,29 @@ function buildTree(layers) {
       let html = `<div class="layers-list">`;
       
       layers.forEach((layer) => {
-        const nodeIdsValue = JSON.stringify(layer.nodeIds);
-        const uniqueId = `cb-${propertyName}-${optionValue}-${layer.path.replace(/[^a-zA-Z0-9]/g, '-')}`;
+        const hasIds = layer.nodeIds && layer.nodeIds.length > 0;
+        const hasChildren = layer.children && layer.children.length > 0;
+        
+        const nodeIdsValue = JSON.stringify(layer.nodeIds || []);
+        const uniqueId = `cb-${propertyName}-${optionValue}-${layer.name.replace(/[^a-zA-Z0-9]/g, '-')}`;
         const displayName = layer.name.split('/').pop();
 
+        html += `<div class="layer-item">`;
+        
         html += `
-          <div class="layer-item">
-            <div class="layer-item-header">
-              <input type="checkbox" class="layer-checkbox" value='${nodeIdsValue}' id="${uniqueId}">
-              <label for="${uniqueId}" title="${layer.name}">${displayName}</label>
-            </div>
+          <div class="layer-item-header">
+            <input 
+              type="checkbox" 
+              class="layer-checkbox" 
+              value='${nodeIdsValue}' 
+              id="${uniqueId}" 
+              ${!hasIds ? 'disabled' : ''}
+            >
+            <label for="${uniqueId}" title="${layer.name}">${displayName}</label>
+          </div>
         `;
         
-        if (layer.children && layer.children.length > 0) {
+        if (hasChildren) {
           html += buildLayerHtml(layer.children, propertyName, optionValue);
         }
         
@@ -440,9 +525,11 @@ function buildTree(layers) {
 
       if (msg.type === 'load-groups') {
         container.innerHTML = '';
+        container.style.overflowY = 'auto';
         
         if (msg.data.length === 0) {
            container.innerHTML = `<p class="info-text">No variant properties found on this component set.</p>`;
+           container.style.overflowY = 'hidden';
            updateGlobalCount();
            return;
         }
@@ -481,23 +568,28 @@ function buildTree(layers) {
           container.innerHTML += propertyHtml;
         });
 
-        // Open the first accordion by default
         const firstGroup = container.querySelector('.property-group');
         if (firstGroup) {
           firstGroup.classList.remove('collapsed');
         }
+        
+        document.querySelectorAll('.layer-checkbox:not(:disabled)').forEach(cb => {
+          updateAncestors(getLayerItemFromCheckbox(cb));
+          updateParentCheckboxState(cb);
+        });
 
         updateGlobalCount();
       }
 
       if (msg.type === 'no-selection') {
         container.innerHTML = `<p class="info-text">${msg.message || 'Please select a component, variant, or instance.'}</p>`;
+        container.style.overflowY = 'hidden';
         updateGlobalCount();
       }
     };
 
     document.getElementById('select-button').onclick = () => {
-      const checkedBoxes = document.querySelectorAll('.layer-checkbox:checked');
+      const checkedBoxes = document.querySelectorAll('.layer-checkbox:checked:not(:disabled)');
       const allIdsToSelect = new Set();
       
       checkedBoxes.forEach(cb => {
@@ -521,15 +613,25 @@ function buildTree(layers) {
         
         const optionGroup = event.target.closest('.option-group');
         if (optionGroup) {
-          const layerCheckboxes = optionGroup.querySelectorAll('.layer-checkbox');
+          const layerCheckboxes = optionGroup.querySelectorAll('.layer-checkbox:not(:disabled)');
           layerCheckboxes.forEach(cb => { cb.checked = isChecked; cb.indeterminate = false; });
+          
+          layerCheckboxes.forEach(cb => updateAncestors(getLayerItemFromCheckbox(cb)));
         }
       }
       
-      if (event.target.classList.contains('layer-checkbox')) {
+      if (event.target.classList.contains('layer-checkbox') && !event.target.disabled) {
         const layerItem = getLayerItemFromCheckbox(event.target);
-        setDescendantsChecked(layerItem, event.target.checked);
-        updateAncestors(layerItem);
+        
+        if (event.target.indeterminate) {
+          event.target.checked = true;
+          event.target.indeterminate = false;
+        }
+        
+        const isChecked = event.target.checked;
+        
+        setDescendantsChecked(layerItem, isChecked); 
+        updateAncestors(layerItem);                           
         updateParentCheckboxState(event.target);
       }
 
@@ -572,12 +674,54 @@ function buildTree(layers) {
       const layerHeader = event.target.closest('.layer-item-header');
       if (layerHeader && event.target.type !== 'checkbox') {
         const checkbox = layerHeader.querySelector('.layer-checkbox');
-        if (checkbox) {
+        if (checkbox && !checkbox.disabled) {
           checkbox.checked = !checkbox.checked;
           checkbox.dispatchEvent(new Event('change', { bubbles: true }));
         }
         return;
       }
+    });
+
+    /* Tooltip Event Listeners */
+    
+    container.addEventListener('mouseover', event => {
+      let label;
+      if (event.target.classList?.contains('layer-item-header')) {
+        label = event.target.querySelector('label');
+      } else if (event.target.closest('.layer-item-header')) {
+        label = event.target.closest('.layer-item-header').querySelector('label');
+      }
+
+      if (label) {
+        currentLabel = label; 
+        clearTimeout(tooltipTimeout); 
+        
+        tooltipTimeout = setTimeout(() => {
+          if (currentLabel === label && (label.scrollWidth > label.clientWidth || label.title)) {
+            
+            tooltip.textContent = label.title;
+            tooltip.style.display = 'block';
+            
+            const rect = label.getBoundingClientRect();
+            tooltip.style.left = (rect.left - 10) + 'px';
+            tooltip.style.top = rect.top + 'px';
+          }
+        }, 1000);
+      }
+    });
+
+    container.addEventListener('mouseout', event => {
+      if (event.target.closest('.layer-item-header')) {
+        clearTimeout(tooltipTimeout);
+        tooltip.style.display = 'none';
+        currentLabel = null; 
+      }
+    });
+    
+    container.addEventListener('scroll', () => {
+      clearTimeout(tooltipTimeout);
+      tooltip.style.display = 'none';
+      currentLabel = null;
     });
 
   </script>
