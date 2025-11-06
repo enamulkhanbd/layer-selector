@@ -73,7 +73,7 @@ function buildGroupsForSingleComponent(componentNode) {
   for (const layer of layers) {
     // We group by 'layer.name' (the full name path) to ensure
     // that "Group/Icon" is treated as one layer.
-    const key = layer.name;
+    const key = layer.path;
     if (!layerMap.has(key)) {
       layerMap.set(key, { name: layer.name, path: layer.path, nodeIds: [] });
     }
@@ -192,7 +192,7 @@ async function processSelection() {
           // This is the core logic that:
           // 1. Groups identical layers (e.g., "Icon/BG") across variants.
           // 2. Separates different layers at the same position (e.g., "Header" and "Footer").
-          const key = layer.name; 
+          const key = layer.path; 
           
           if (!layerMap.has(key)) {
             layerMap.set(key, { name: layer.name, path: layer.path, nodeIds: [] });
